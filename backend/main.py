@@ -20,7 +20,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        os.getenv("FRONTEND_URL", ""),
+        os.getenv("FRONTEND_URL", "https://bookshelf-two-tau.vercel.app"),
     ],
     allow_credentials=True,
     allow_methods=["*"],
