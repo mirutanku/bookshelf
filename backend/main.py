@@ -102,15 +102,14 @@ def search_books(
 
 @app.get("/api/shelf", response_model=list[UserBookResponse])
 def get_shelf(
+    status: str | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return (
-        db.query(UserBook)
-        .filter(UserBook.user_id == current_user.id)
-        .order_by(UserBook.created_at.desc())
-        .all()
-    )
+    query = db.query(UserBook).filter(UserBook.user_id == current_user.id)
+    if status:
+        query = query.filter(UserBook.status == status)
+    return query.order_by(UserBook.created_at.desc()).all()
 
 @app.post("/api/shelf", response_model=UserBookResponse, status_code=201)
 def add_to_shelf(
