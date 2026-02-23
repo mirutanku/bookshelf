@@ -8,10 +8,15 @@ function BookList({ onLogout }) {
   const [showForm, setShowForm] = useState(false)
   const [editingEntry, setEditingEntry] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState('')
 
   async function fetchBooks() {
     try {
-      const response = await api.get('/api/shelf')
+      const params = {}
+      if (statusFilter) {
+        params.status = statusFilter
+      }
+      const response = await api.get('/api/shelf', { params })
       setBooks(response.data)
     } catch (err) {
       if (err.response?.status === 401) {
@@ -24,7 +29,7 @@ function BookList({ onLogout }) {
 
   useEffect(() => {
     fetchBooks()
-  }, [])
+  }, [statusFilter])
 
   async function handleDelete(userBookId) {
     try {
@@ -57,6 +62,18 @@ function BookList({ onLogout }) {
         </div>
       </div>
 
+      <div className="filters">
+        {['', 'want_to_read', 'reading', 'read'].map((status) => (
+          <button
+            key={status}
+            className={statusFilter === status ? 'filter-active' : 'filter-button'}
+            onClick={() => setStatusFilter(status)}
+          >
+            {status === '' ? 'All' : status === 'want_to_read' ? 'Want to Read' : status === 'reading' ? 'Reading' : 'Read'}
+          </button>
+        ))}
+      </div>
+
       {showForm && (
         <BookForm
           entry={editingEntry}
@@ -66,7 +83,7 @@ function BookList({ onLogout }) {
       )}
 
       {books.length === 0 ? (
-        <p>No books yet. Add your first one!</p>
+        <p>No books match this filter.</p>
       ) : (
         books.map((entry) => (
           <BookItem
