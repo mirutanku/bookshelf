@@ -19,6 +19,9 @@ class Book(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     author = Column(String, nullable=False)
+    olid = Column(String, unique=True, nullable=True)  # Open Library ID
+    cover_url = Column(String, nullable=True)
+    first_publish_year = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user_books = relationship("UserBook", back_populates="book")

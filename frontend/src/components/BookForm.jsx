@@ -2,19 +2,19 @@ import { useState, useEffect } from 'react'
 import api from '../api'
 
 function BookForm({ entry, onSaved, onCancel }) {
-  const [title, setTitle] = useState(entry?.book?.title || '')
-  const [author, setAuthor] = useState(entry?.book?.author || '')
+  const [query, setQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [selectedBook, setSelectedBook] = useState(null)
+  const [searching, setSearching] = useState(false)
   const [status, setStatus] = useState(entry?.status || 'want_to_read')
   const [rating, setRating] = useState(entry?.rating || '')
   const [notes, setNotes] = useState(entry?.notes || '')
   const [error, setError] = useState('')
-  const [searchResults, setSearchResults] = useState([])
-  const [searching, setSearching] = useState(false)
 
   const isEditing = !!entry
 
   useEffect(() => {
-    if (isEditing || title.length < 2) {
+    if (isEditing || query.length < 2) {
       setSearchResults([])
       return
     }
@@ -22,8 +22,8 @@ function BookForm({ entry, onSaved, onCancel }) {
     const timer = setTimeout(async () => {
       setSearching(true)
       try {
-        const response = await api.get('/api/books/search', {
-          params: { q: title },
+        const response = await api.get('/api/search', {
+          params: { q: query },
         })
         setSearchResults(response.data)
       } catch (err) {
@@ -31,14 +31,14 @@ function BookForm({ entry, onSaved, onCancel }) {
       } finally {
         setSearching(false)
       }
-    }, 300)
+    }, 400)
 
     return () => clearTimeout(timer)
-  }, [title, isEditing])
+  }, [query, isEditing])
 
   function selectBook(book) {
-    setTitle(book.title)
-    setAuthor(book.author)
+    setSelectedBook(book)
+    setQuery('')
     setSearchResults([])
   }
 
@@ -54,9 +54,16 @@ function BookForm({ entry, onSaved, onCancel }) {
           notes: notes || null,
         })
       } else {
+        if (!selectedBook) {
+          setError('Please search for and select a book')
+          return
+        }
         await api.post('/api/shelf', {
-          title,
-          author,
+          olid: selectedBook.olid,
+          title: selectedBook.title,
+          author: selectedBook.author,
+          cover_url: selectedBook.cover_url,
+          first_publish_year: selectedBook.first_publish_year,
           status,
           rating: rating === '' ? null : parseInt(rating),
           notes: notes || null,
@@ -72,43 +79,95 @@ function BookForm({ entry, onSaved, onCancel }) {
     <div className="book-form">
       <h3>{isEditing ? 'Edit Entry' : 'Add a Book'}</h3>
       <form onSubmit={handleSubmit}>
-        <div>
-          <label>Title</label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            disabled={isEditing}
-            required
-          />
-          {searchResults.length > 0 && (
-            <div className="search-results">
-              {searchResults.map((book) => (
-                <div
-                  key={book.id}
-                  className="search-result-item"
-                  onClick={() => selectBook(book)}
-                >
-                  <strong>{book.title}</strong> by {book.author}
-                  <span className="reader-count">
-                    {book.reader_count} {book.reader_count === 1 ? 'reader' : 'readers'}
-                  </span>
-                </div>
-              ))}
+
+        {!isEditing && !selectedBook && (
+          <div>
+            <label>Search for a book</label>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Type a title or author..."
+            />
+            {searching && <p className="searching">Searching Open Library...</p>}
+            {searchResults.length > 0 && (
+              <div className="search-results">
+                {searchResults.map((book) => (
+                  <div
+                    key={book.olid}
+                    className="search-result-item"
+                    onClick={() => selectBook(book)}
+                  >
+                    {book.cover_url && (
+                      <img
+                        src={book.cover_url}
+                        alt=""
+                        className="search-result-cover"
+                      />
+                    )}
+                    <div>
+                      <strong>{book.title}</strong>
+                      <br />
+                      <span className="search-result-author">
+                        {book.author}
+                        {book.first_publish_year && ` (${book.first_publish_year})`}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isEditing && selectedBook && (
+          <div className="selected-book">
+            <div className="selected-book-info">
+              {selectedBook.cover_url && (
+                <img
+                  src={selectedBook.cover_url}
+                  alt=""
+                  className="selected-book-cover"
+                />
+              )}
+              <div>
+                <strong>{selectedBook.title}</strong>
+                <br />
+                <span>{selectedBook.author}</span>
+                {selectedBook.first_publish_year && (
+                  <span> ({selectedBook.first_publish_year})</span>
+                )}
+              </div>
             </div>
-          )}
-          {searching && <p className="searching">Searching...</p>}
-        </div>
-        <div>
-          <label>Author</label>
-          <input
-            type="text"
-            value={author}
-            onChange={(e) => setAuthor(e.target.value)}
-            disabled={isEditing}
-            required
-          />
-        </div>
+            <button
+              type="button"
+              className="change-book-button"
+              onClick={() => setSelectedBook(null)}
+            >
+              Change
+            </button>
+          </div>
+        )}
+
+        {isEditing && (
+          <div className="selected-book">
+            <div className="selected-book-info">
+              {entry.book.cover_url && (
+                <img
+                  src={entry.book.cover_url}
+                  alt=""
+                  className="selected-book-cover"
+                />
+              )}
+              <div>
+                <strong>{entry.book.title}</strong>
+                <br />
+                <span>{entry.book.author}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div>
           <label>Status</label>
           <select value={status} onChange={(e) => setStatus(e.target.value)}>

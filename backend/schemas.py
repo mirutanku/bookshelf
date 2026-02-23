@@ -28,13 +28,19 @@ class BookResponse(BaseModel):
     id: int
     title: str
     author: str
+    olid: str | None
+    cover_url: str | None
+    first_publish_year: int | None
 
     class Config:
         from_attributes = True
 
 class UserBookCreate(BaseModel):
+    olid: str
     title: str
     author: str
+    cover_url: str | None = None
+    first_publish_year: int | None = None
     status: str = "want_to_read"
     rating: int | None = None
     notes: str | None = None
@@ -51,15 +57,6 @@ class UserBookResponse(BaseModel):
     notes: str | None
     created_at: datetime
     book: BookResponse
-
-    class Config:
-        from_attributes = True
-
-class BookSearchResponse(BaseModel):
-    id: int
-    title: str
-    author: str
-    reader_count: int
 
     class Config:
         from_attributes = True

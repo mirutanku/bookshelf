@@ -1,4 +1,5 @@
 import os
+import httpx
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -8,7 +9,6 @@ from models import User, Book, UserBook
 from schemas import (
     UserCreate, UserResponse, TokenResponse,
     UserBookCreate, UserBookUpdate, UserBookResponse,
-    BookSearchResponse,
 )
 from auth import hash_password, verify_password, create_access_token, decode_access_token
 
@@ -20,7 +20,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        os.getenv("FRONTEND_URL", "https://bookshelf-two-tau.vercel.app"),
+        os.getenv("FRONTEND_URL", ""),
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -69,33 +69,30 @@ def login(user: UserCreate, db: Session = Depends(get_db)):
     return {"access_token": token, "token_type": "bearer"}
 
 
-# --- Book search (find existing books in the system) ---
+# --- Open Library search (proxied through our backend) ---
 
-@app.get("/api/books/search", response_model=list[BookSearchResponse])
-def search_books(
-    q: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    results = (
-        db.query(
-            Book.id,
-            Book.title,
-            Book.author,
-            func.count(UserBook.id).label("reader_count"),
+@app.get("/api/search")
+async def search_books(q: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            "https://openlibrary.org/search.json",
+            params={"q": q, "limit": 8, "fields": "key,title,author_name,first_publish_year,cover_i"},
         )
-        .outerjoin(UserBook, UserBook.book_id == Book.id)
-        .filter(
-            Book.title.ilike(f"%{q}%") | Book.author.ilike(f"%{q}%")
-        )
-        .group_by(Book.id)
-        .limit(10)
-        .all()
-    )
-    return [
-        {"id": r.id, "title": r.title, "author": r.author, "reader_count": r.reader_count}
-        for r in results
-    ]
+        data = response.json()
+
+    results = []
+    for doc in data.get("docs", []):
+        olid = doc.get("key", "").replace("/works/", "")
+        cover_i = doc.get("cover_i")
+        results.append({
+            "olid": olid,
+            "title": doc.get("title", "Unknown Title"),
+            "author": doc.get("author_name", ["Unknown Author"])[0],
+            "first_publish_year": doc.get("first_publish_year"),
+            "cover_url": f"https://covers.openlibrary.org/b/id/{cover_i}-M.jpg" if cover_i else None,
+        })
+
+    return results
 
 
 # --- User's bookshelf ---
@@ -117,19 +114,18 @@ def add_to_shelf(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Find or create the canonical book
-    book = (
-        db.query(Book)
-        .filter(
-            func.lower(Book.title) == user_book.title.lower(),
-            func.lower(Book.author) == user_book.author.lower(),
-        )
-        .first()
-    )
+    # Find or create the canonical book by Open Library ID
+    book = db.query(Book).filter(Book.olid == user_book.olid).first()
     if not book:
-        book = Book(title=user_book.title, author=user_book.author)
+        book = Book(
+            title=user_book.title,
+            author=user_book.author,
+            olid=user_book.olid,
+            cover_url=user_book.cover_url,
+            first_publish_year=user_book.first_publish_year,
+        )
         db.add(book)
-        db.flush()  # assigns book.id without committing the full transaction
+        db.flush()
 
     # Check if already on shelf
     existing = (
